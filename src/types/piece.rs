@@ -5,7 +5,7 @@ use std::{
 
 use super::Color;
 
-#[derive(Copy, Clone, Default, Eq, PartialEq, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 #[repr(u8)]
 pub enum Piece {
     WhitePawn,
@@ -20,8 +20,6 @@ pub enum Piece {
     BlackQueen,
     WhiteKing,
     BlackKing,
-    #[default]
-    None,
 }
 
 impl Piece {
@@ -70,54 +68,34 @@ impl TryFrom<char> for Piece {
     }
 }
 
-impl TryInto<char> for Piece {
-    type Error = ();
-
-    fn try_into(self) -> Result<char, Self::Error> {
-        if let Piece::None = self {
-            Err(())
-        } else {
-            Ok("PpNnBbRrQqKk".chars().nth(self as usize).unwrap())
-        }
+impl From<Piece> for char {
+    fn from(piece: Piece) -> char {
+        "PpNnBbRrQqKk".chars().nth(piece as usize).unwrap()
     }
 }
 
-impl<T> Index<Piece> for [T] {
+impl<T> Index<Piece> for [T; Piece::NUM] {
     type Output = T;
 
     fn index(&self, index: Piece) -> &Self::Output {
-        unsafe { self.get_unchecked(index as usize) }
+        &self[index as usize]
     }
 }
 
-impl<T> IndexMut<Piece> for [T] {
+impl<T> IndexMut<Piece> for [T; Piece::NUM] {
     fn index_mut(&mut self, index: Piece) -> &mut Self::Output {
-        unsafe { self.get_unchecked_mut(index as usize) }
+        &mut self[index as usize]
     }
 }
 
 impl Display for Piece {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let piece = match self {
-            Self::WhitePawn => 'P',
-            Self::BlackPawn => 'p',
-            Self::WhiteKnight => 'N',
-            Self::BlackKnight => 'n',
-            Self::WhiteBishop => 'B',
-            Self::BlackBishop => 'b',
-            Self::WhiteRook => 'R',
-            Self::BlackRook => 'r',
-            Self::WhiteQueen => 'Q',
-            Self::BlackQueen => 'q',
-            Self::WhiteKing => 'K',
-            Self::BlackKing => 'k',
-            Self::None => panic!(),
-        };
-        write!(f, "{piece}")
+        write!(f, "{}", char::from(*self))
     }
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
+#[repr(u8)]
 pub enum PieceType {
     Pawn,
     Knight,
@@ -125,7 +103,6 @@ pub enum PieceType {
     Rook,
     Queen,
     King,
-    None,
 }
 
 impl PieceType {
@@ -136,16 +113,16 @@ impl PieceType {
     }
 }
 
-impl<T> Index<PieceType> for [T] {
+impl<T> Index<PieceType> for [T; PieceType::NUM] {
     type Output = T;
 
     fn index(&self, index: PieceType) -> &Self::Output {
-        unsafe { self.get_unchecked(index as usize) }
+        &self[index as usize]
     }
 }
 
-impl<T> IndexMut<PieceType> for [T] {
+impl<T> IndexMut<PieceType> for [T; PieceType::NUM] {
     fn index_mut(&mut self, index: PieceType) -> &mut Self::Output {
-        unsafe { self.get_unchecked_mut(index as usize) }
+        &mut self[index as usize]
     }
 }

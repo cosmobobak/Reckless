@@ -2,7 +2,7 @@ use super::Board;
 use crate::{
     lookup::between,
     parameters::PIECE_VALUES,
-    types::{CastlingKind, Color, Piece, PieceType, Square},
+    types::{CastlingKind, Color, PieceType, Square},
 };
 
 #[derive(Debug)]
@@ -54,7 +54,7 @@ impl Board {
 
         board.set_castling(parts.next().unwrap());
 
-        board.state.en_passant = parts.next().unwrap_or_default().try_into().unwrap_or_default();
+        board.state.en_passant = parts.next().unwrap_or_default().try_into().ok();
         board.state.halfmove_clock = parts.next().unwrap_or_default().parse().unwrap_or_default();
         board.fullmove_number = parts.next().unwrap_or_default().parse().unwrap_or_default();
 
@@ -70,7 +70,7 @@ impl Board {
             match right {
                 'K' => {
                     let mut rook_from = Square::H1;
-                    while self.piece_on(rook_from).piece_type() != PieceType::Rook {
+                    while self.piece_on(rook_from).map(|p| p.piece_type()) != Some(PieceType::Rook) {
                         rook_from = rook_from.shift(-1);
                     }
 
@@ -79,7 +79,7 @@ impl Board {
                 }
                 'Q' => {
                     let mut rook_from = Square::A1;
-                    while self.piece_on(rook_from).piece_type() != PieceType::Rook {
+                    while self.piece_on(rook_from).map(|p| p.piece_type()) != Some(PieceType::Rook) {
                         rook_from = rook_from.shift(1);
                     }
 
@@ -88,7 +88,7 @@ impl Board {
                 }
                 'k' => {
                     let mut rook_from = Square::H8;
-                    while self.piece_on(rook_from).piece_type() != PieceType::Rook {
+                    while self.piece_on(rook_from).map(|p| p.piece_type()) != Some(PieceType::Rook) {
                         rook_from = rook_from.shift(-1);
                     }
 
@@ -97,7 +97,7 @@ impl Board {
                 }
                 'q' => {
                     let mut rook_from = Square::A8;
-                    while self.piece_on(rook_from).piece_type() != PieceType::Rook {
+                    while self.piece_on(rook_from).map(|p| p.piece_type()) != Some(PieceType::Rook) {
                         rook_from = rook_from.shift(1);
                     }
 
@@ -172,16 +172,15 @@ impl Board {
 
             for file in 0..8 {
                 let piece = self.piece_on(Square::from_rank_file(rank, file));
-                if piece == Piece::None {
+                if let Some(piece) = piece {
+                    if empty_count > 0 {
+                        fen.push_str(&empty_count.to_string());
+                        empty_count = 0;
+                    }
+                    fen.push_str(&piece.to_string());
+                } else {
                     empty_count += 1;
-                    continue;
                 }
-
-                if empty_count > 0 {
-                    fen.push_str(&empty_count.to_string());
-                    empty_count = 0;
-                }
-                fen.push_str(&piece.to_string());
             }
 
             if empty_count > 0 {
@@ -198,7 +197,10 @@ impl Board {
         fen.push(' ');
         fen.push_str(&self.state.castling.to_string(self));
         fen.push(' ');
-        fen.push_str(&self.state.en_passant.to_string());
+        match self.state.en_passant {
+            Some(ep) => fen.push_str(&ep.to_string()),
+            None => fen.push('-'),
+        }
         fen.push(' ');
         fen.push_str(&self.state.halfmove_clock.to_string());
         fen.push(' ');

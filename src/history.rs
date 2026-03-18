@@ -6,8 +6,8 @@ use crate::{
 };
 
 type FromToHistory<T> = [[T; 64]; 64];
-type PieceToHistory<T> = [[T; 64]; 13];
-type ContinuationHistoryType = [[[[PieceToHistory<i16>; 64]; 13]; 2]; 2];
+type PieceToHistory<T> = [[T; 64]; Piece::NUM];
+type ContinuationHistoryType = [[[[PieceToHistory<i16>; 64]; Piece::NUM]; 2]; 2];
 
 fn apply_bonus<const MAX: i32>(entry: &mut i16, bonus: i32) {
     let bonus = bonus.clamp(-MAX, MAX);
@@ -70,7 +70,7 @@ impl Default for QuietHistory {
 
 struct NoisyHistoryEntry {
     factorizer: i16,
-    buckets: [[i16; 2]; 7],
+    buckets: [[i16; 2]; PieceType::NUM],
 }
 
 impl NoisyHistoryEntry {

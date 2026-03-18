@@ -289,8 +289,10 @@ impl Network {
 
         let deltas = &mut self.threat_stack[self.index].delta;
 
+        // Use a sentinel value (12) to represent empty squares in SIMD operations
+        const EMPTY_SQUARE: i8 = Piece::NUM as i8;
         let board = unsafe {
-            _mm512_mask_blend_epi8(dst.to_bb().0, board.mailbox_vector(), _mm512_set1_epi8(Piece::None as i8))
+            _mm512_mask_blend_epi8(dst.to_bb().0, board.mailbox_vector(), _mm512_set1_epi8(EMPTY_SQUARE))
         };
 
         let (src_perm, src_valid) = ray_permuation(src);
@@ -486,12 +488,13 @@ impl Network {
             }
 
             let delta = &self.pst_stack[i].delta;
+            let Some(piece) = delta.piece else { continue };
 
-            let from = delta.mv.from() ^ (56 * (delta.piece.piece_color() as u8));
-            let to = delta.mv.to() ^ (56 * (delta.piece.piece_color() as u8));
+            let from = delta.mv.from() ^ (56 * (piece.piece_color() as u8));
+            let to = delta.mv.to() ^ (56 * (piece.piece_color() as u8));
 
-            if delta.piece.piece_type() == PieceType::King
-                && delta.piece.piece_color() == pov
+            if piece.piece_type() == PieceType::King
+                && piece.piece_color() == pov
                 && ((from.file() >= 4) != (to.file() >= 4) || BUCKETS[from] != BUCKETS[to])
             {
                 return None;
@@ -508,12 +511,13 @@ impl Network {
             }
 
             let delta = &self.pst_stack[i].delta;
+            let Some(piece) = delta.piece else { continue };
 
             let from = delta.mv.from();
             let to = delta.mv.to();
 
-            if delta.piece.piece_type() == PieceType::King
-                && delta.piece.piece_color() == pov
+            if piece.piece_type() == PieceType::King
+                && piece.piece_color() == pov
                 && (from.file() >= 4) != (to.file() >= 4)
             {
                 return None;

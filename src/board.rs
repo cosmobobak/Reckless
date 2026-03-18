@@ -24,14 +24,14 @@ struct InternalState {
     pawn_key: u64,
     minor_key: u64,
     non_pawn_keys: [u64; Color::NUM],
-    en_passant: Square,
+    en_passant: Option<Square>,
     castling: Castling,
     halfmove_clock: u8,
     material: i32,
     plies_from_null: i32,
     repetition: i32,
     captured: Option<Piece>,
-    recapture_square: Square,
+    recapture_square: Option<Square>,
     threats: Bitboard,
     pinned: [Bitboard; Color::NUM],
     checkers: Bitboard,
@@ -42,7 +42,7 @@ pub struct Board {
     side_to_move: Color,
     pieces: [Bitboard; PieceType::NUM],
     colors: [Bitboard; Color::NUM],
-    mailbox: [Piece; Square::NUM],
+    mailbox: [Option<Piece>; Square::NUM],
     state: InternalState,
     state_stack: Box<ArrayVec<InternalState, 2048>>,
     fullmove_number: usize,
@@ -109,11 +109,11 @@ impl Board {
         self.state.captured
     }
 
-    pub const fn recapture_square(&self) -> Square {
+    pub const fn recapture_square(&self) -> Option<Square> {
         self.state.recapture_square
     }
 
-    pub const fn en_passant(&self) -> Square {
+    pub const fn en_passant(&self) -> Option<Square> {
         self.state.en_passant
     }
 
@@ -177,12 +177,12 @@ impl Board {
         self.of(PieceType::King, color).lsb()
     }
 
-    pub fn piece_on(&self, square: Square) -> Piece {
+    pub fn piece_on(&self, square: Square) -> Option<Piece> {
         self.mailbox[square]
     }
 
     pub fn moved_piece(&self, mv: Move) -> Piece {
-        self.mailbox[mv.from()]
+        self.mailbox[mv.from()].unwrap()
     }
 
     pub fn has_non_pawns(&self) -> bool {
@@ -200,13 +200,13 @@ impl Board {
     }
 
     pub fn add_piece(&mut self, piece: Piece, square: Square) {
-        self.mailbox[square] = piece;
+        self.mailbox[square] = Some(piece);
         self.colors[piece.piece_color()].set(square);
         self.pieces[piece.piece_type()].set(square);
     }
 
     pub fn remove_piece(&mut self, piece: Piece, square: Square) {
-        self.mailbox[square] = Piece::None;
+        self.mailbox[square] = None;
         self.colors[piece.piece_color()].clear(square);
         self.pieces[piece.piece_type()].clear(square);
     }
@@ -277,7 +277,7 @@ impl Board {
                 }
             }
 
-            if (between(cuckoo_a(i), cuckoo_b(i)) & self.occupancies()).is_empty() {
+            if (between(cuckoo_a(i).unwrap(), cuckoo_b(i).unwrap()) & self.occupancies()).is_empty() {
                 if ply > d {
                     return true;
                 }
@@ -334,7 +334,7 @@ impl Board {
             return !self.threats().contains(to) && !self.pinned(self.side_to_move).contains(self.castling_rooks[kind]);
         }
 
-        if self.piece_on(from).piece_type() == PieceType::King {
+        if self.piece_on(from).map(|p| p.piece_type()) == Some(PieceType::King) {
             return !self.threats().contains(to);
         }
 
@@ -366,8 +366,10 @@ impl Board {
         let from = mv.from();
         let to = mv.to();
 
-        let piece = self.piece_on(from).piece_type();
-        let captured = self.piece_on(to).piece_type();
+        let Some(piece) = self.piece_on(from).map(|p| p.piece_type()) else {
+            return false;
+        };
+        let captured = self.piece_on(to).map(|p| p.piece_type());
 
         if mv.is_castling() {
             if !self.us().contains(from) || piece != PieceType::King {
@@ -387,7 +389,7 @@ impl Board {
                 && (self.castling_threat[kind] & self.threats()).is_empty();
         }
 
-        if piece == PieceType::None || !self.us().contains(from) || self.us().contains(to) {
+        if !self.us().contains(from) || self.us().contains(to) {
             return false;
         }
 
@@ -395,7 +397,7 @@ impl Board {
             return false;
         }
 
-        if captured != PieceType::None && (!mv.is_capture() || captured == PieceType::King) {
+        if captured.is_some_and(|c| !mv.is_capture() || c == PieceType::King) {
             return false;
         }
 
@@ -405,7 +407,7 @@ impl Board {
 
         if piece == PieceType::Pawn {
             if mv.is_en_passant() {
-                return to == self.state.en_passant && pawn_attacks(from, self.side_to_move).contains(to);
+                return Some(to) == self.state.en_passant && pawn_attacks(from, self.side_to_move).contains(to);
             }
 
             let offset = if self.side_to_move == Color::White { 8 } else { -8 };
@@ -526,8 +528,8 @@ impl Board {
             }
         }
 
-        if self.state.en_passant != Square::None {
-            self.state.key ^= ZOBRIST.en_passant[self.state.en_passant];
+        if let Some(ep) = self.state.en_passant {
+            self.state.key ^= ZOBRIST.en_passant[ep];
         }
 
         if self.side_to_move == Color::White {
@@ -560,13 +562,13 @@ impl Default for Board {
             state: InternalState::default(),
             pieces: [Bitboard::default(); PieceType::NUM],
             colors: [Bitboard::default(); Color::NUM],
-            mailbox: [Piece::None; Square::NUM],
+            mailbox: [None; Square::NUM],
             state_stack: Box::new(ArrayVec::new()),
             fullmove_number: 0,
             castling_rights: [0b1111; Square::NUM],
             castling_path: [Bitboard::default(); 16],
             castling_threat: [Bitboard::default(); 16],
-            castling_rooks: [Square::None; 16],
+            castling_rooks: [Square::A1; 16],
             frc: false,
         }
     }

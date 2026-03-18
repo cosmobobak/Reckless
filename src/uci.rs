@@ -326,8 +326,7 @@ fn display(td: &ThreadData) {
         print!(" |");
         for file in 0..8 {
             let square = Square::from_rank_file(rank, file);
-            let piece = td.board.piece_on(square);
-            let symbol = piece.try_into().unwrap_or(' ');
+            let symbol = td.board.piece_on(square).map(char::from).unwrap_or(' ');
             print!(" {symbol} |");
         }
         println!(" {}", rank + 1);

@@ -2,7 +2,7 @@ use crate::{
     parameters::PIECE_VALUES,
     search::NodeType,
     thread::ThreadData,
-    types::{ArrayVec, Move, MoveList, PieceType, MAX_MOVES},
+    types::{ArrayVec, Move, MoveList, Piece, PieceType, MAX_MOVES},
 };
 
 #[derive(Copy, Clone, Eq, PartialEq, PartialOrd)]
@@ -171,8 +171,11 @@ impl MovePicker {
                 continue;
             }
 
-            let captured =
-                if entry.mv.is_en_passant() { PieceType::Pawn } else { td.board.piece_on(mv.to()).piece_type() };
+            let captured = if entry.mv.is_en_passant() {
+                PieceType::Pawn
+            } else {
+                td.board.piece_on(mv.to()).map(Piece::piece_type).unwrap_or(PieceType::King)
+            };
 
             entry.score = 16 * PIECE_VALUES[captured]
                 + td.noisy_history.get(threats, td.board.moved_piece(mv), mv.to(), captured);

@@ -22,7 +22,7 @@ impl super::Board {
         }
 
         // In the worst case, we lose a piece, but still end up with a non-negative balance
-        balance -= PIECE_VALUES[self.piece_on(mv.from()).piece_type()];
+        balance -= PIECE_VALUES[self.piece_on(mv.from()).unwrap().piece_type()];
 
         if let Some(promotion) = mv.promotion_piece() {
             balance -= PIECE_VALUES[promotion];
@@ -94,12 +94,12 @@ impl super::Board {
             return PIECE_VALUES[PieceType::Pawn];
         }
 
-        let capture = self.piece_on(mv.to()).piece_type();
+        let capture = self.piece_on(mv.to()).map(|p| p.piece_type());
 
         if let Some(promotion) = mv.promotion_piece() {
-            PIECE_VALUES[capture] + PIECE_VALUES[promotion] - PIECE_VALUES[PieceType::Pawn]
+            PIECE_VALUES[capture.unwrap_or(PieceType::Pawn)] + PIECE_VALUES[promotion] - PIECE_VALUES[PieceType::Pawn]
         } else {
-            PIECE_VALUES[capture]
+            PIECE_VALUES[capture.unwrap_or(PieceType::Pawn)]
         }
     }
 

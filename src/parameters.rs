@@ -1,4 +1,6 @@
-pub const PIECE_VALUES: [i32; 7] = [109, 403, 435, 679, 1242, 0, 0];
+use crate::types::PieceType;
+
+pub const PIECE_VALUES: [i32; PieceType::NUM] = [109, 403, 435, 679, 1242, 0];
 
 #[allow(unused_macros)]
 #[cfg(not(feature = "spsa"))]

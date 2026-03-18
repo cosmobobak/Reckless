@@ -5,7 +5,7 @@ use super::Bitboard;
 /// Represents a square on a bitboard corresponding to the [Little-Endian Rank-File Mapping][LERFM].
 ///
 /// [LERFM]: https://www.chessprogramming.org/Square_Mapping_Considerations#Little-Endian_Rank-File_Mapping
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 #[repr(u8)]
 #[rustfmt::skip]
 pub enum Square {
@@ -17,8 +17,6 @@ pub enum Square {
     A6, B6, C6, D6, E6, F6, G6, H6,
     A7, B7, C7, D7, E7, F7, G7, H7,
     A8, B8, C8, D8, E8, F8, G8, H8,
-    #[default]
-    None,
 }
 
 impl Square {
@@ -100,26 +98,22 @@ impl BitXorAssign<u8> for Square {
     }
 }
 
-impl<T> Index<Square> for [T] {
+impl<T> Index<Square> for [T; Square::NUM] {
     type Output = T;
 
     fn index(&self, square: Square) -> &Self::Output {
-        unsafe { self.get_unchecked(square as usize) }
+        &self[square as usize]
     }
 }
 
-impl<T> IndexMut<Square> for [T] {
+impl<T> IndexMut<Square> for [T; Square::NUM] {
     fn index_mut(&mut self, square: Square) -> &mut Self::Output {
-        unsafe { self.get_unchecked_mut(square as usize) }
+        &mut self[square as usize]
     }
 }
 
 impl std::fmt::Display for Square {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        if *self == Self::None {
-            return write!(f, "-");
-        }
-
         let rank = (*self as u8) / 8 + b'1';
         let file = (*self as u8) % 8 + b'a';
         write!(f, "{}{}", file as char, rank as char)

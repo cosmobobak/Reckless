@@ -14,14 +14,14 @@ impl Board {
         self.state.plies_from_null = 0;
         self.state.repetition = 0;
         self.state.captured = None;
-        self.state.recapture_square = Square::None;
+        self.state.recapture_square = None;
         self.state.checkers = Bitboard::default();
 
         self.update_threats();
 
-        if self.state.en_passant != Square::None {
-            self.state.key ^= ZOBRIST.en_passant[self.state.en_passant];
-            self.state.en_passant = Square::None;
+        if let Some(ep) = self.state.en_passant {
+            self.state.key ^= ZOBRIST.en_passant[ep];
+            self.state.en_passant = None;
         }
     }
 
@@ -37,7 +37,7 @@ impl Board {
     pub fn make_move<T: BoardObserver>(&mut self, mv: Move, observer: &mut T) {
         let from = mv.from();
         let to = mv.to();
-        let piece = self.piece_on(from);
+        let piece = self.piece_on(from).unwrap();
         let pt = piece.piece_type();
         let stm = self.side_to_move;
 
@@ -46,13 +46,13 @@ impl Board {
         self.state.key ^= ZOBRIST.castling[self.state.castling];
         self.state.key ^= ZOBRIST.side;
 
-        if self.state.en_passant != Square::None {
-            self.state.key ^= ZOBRIST.en_passant[self.state.en_passant];
-            self.state.en_passant = Square::None;
+        if let Some(ep) = self.state.en_passant {
+            self.state.key ^= ZOBRIST.en_passant[ep];
+            self.state.en_passant = None;
         }
 
         self.state.captured = None;
-        self.state.recapture_square = Square::None;
+        self.state.recapture_square = None;
 
         if mv.kind() == MoveKind::Capture || pt == PieceType::Pawn {
             self.state.halfmove_clock = 0;
@@ -62,7 +62,7 @@ impl Board {
         self.state.plies_from_null += 1;
 
         let captured = self.piece_on(to);
-        if captured != Piece::None && !mv.is_castling() {
+        if let Some(captured) = captured.filter(|_| !mv.is_castling()) {
             self.remove_piece(piece, from);
             observer.on_piece_change(self, piece, from, false);
 
@@ -74,7 +74,7 @@ impl Board {
 
             self.state.material -= PIECE_VALUES[captured.piece_type()];
             self.state.captured = Some(captured);
-            self.state.recapture_square = to;
+            self.state.recapture_square = Some(to);
         } else if !mv.is_castling() {
             self.remove_piece(piece, from);
             self.add_piece(piece, to);
@@ -86,8 +86,9 @@ impl Board {
 
         match mv.kind() {
             MoveKind::DoublePush => {
-                self.state.en_passant = Square::new((from as u8 + to as u8) / 2);
-                self.state.key ^= ZOBRIST.en_passant[self.state.en_passant];
+                let ep = Square::new((from as u8 + to as u8) / 2);
+                self.state.en_passant = Some(ep);
+                self.state.key ^= ZOBRIST.en_passant[ep];
             }
             MoveKind::EnPassant => {
                 let captured = Piece::new(!stm, PieceType::Pawn);
@@ -171,7 +172,7 @@ impl Board {
 
         let from = mv.from();
         let to = mv.to();
-        let piece = self.piece_on(to);
+        let piece = self.piece_on(to).unwrap();
         let stm = self.side_to_move;
 
         if !mv.is_castling() {
@@ -179,8 +180,8 @@ impl Board {
             self.remove_piece(piece, to);
         }
 
-        if let Some(piece) = self.state.captured {
-            self.add_piece(piece, to);
+        if let Some(captured) = self.state.captured {
+            self.add_piece(captured, to);
         }
 
         match mv.kind() {

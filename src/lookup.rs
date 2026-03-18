@@ -6,8 +6,8 @@ static mut BETWEEN: [[Bitboard; 64]; 64] = [[Bitboard(0); 64]; 64];
 static mut RAY_PASS: [[Bitboard; 64]; 64] = [[Bitboard(0); 64]; 64];
 
 static mut CUCKOO: [u64; 0x2000] = [0; 0x2000];
-static mut A: [Square; 0x2000] = [Square::None; 0x2000];
-static mut B: [Square; 0x2000] = [Square::None; 0x2000];
+static mut A: [Option<Square>; 0x2000] = [None; 0x2000];
+static mut B: [Option<Square>; 0x2000] = [None; 0x2000];
 
 pub fn initialize() {
     unsafe {
@@ -54,14 +54,14 @@ unsafe fn init_cuckoo() {
 
         for a in 0..64 {
             for b in (a + 1)..64 {
-                let mut a = Square::new(a);
-                let mut b = Square::new(b);
+                let mut a: Option<Square> = Some(Square::new(a));
+                let mut b: Option<Square> = Some(Square::new(b));
 
-                if !is_reversible_move(piece, a, b) {
+                if !is_reversible_move(piece, a.unwrap(), b.unwrap()) {
                     continue;
                 }
 
-                let mut mv = ZOBRIST.pieces[piece][a] ^ ZOBRIST.pieces[piece][b] ^ ZOBRIST.side;
+                let mut mv = ZOBRIST.pieces[piece][a.unwrap()] ^ ZOBRIST.pieces[piece][b.unwrap()] ^ ZOBRIST.side;
                 let mut i = h1(mv);
 
                 loop {
@@ -69,7 +69,7 @@ unsafe fn init_cuckoo() {
                     std::mem::swap(&mut A[i], &mut a);
                     std::mem::swap(&mut B[i], &mut b);
 
-                    if a == Square::None && b == Square::None {
+                    if a.is_none() && b.is_none() {
                         break;
                     }
 
@@ -92,11 +92,11 @@ pub fn cuckoo(index: usize) -> u64 {
     unsafe { CUCKOO[index] }
 }
 
-pub fn cuckoo_a(index: usize) -> Square {
+pub fn cuckoo_a(index: usize) -> Option<Square> {
     unsafe { A[index] }
 }
 
-pub fn cuckoo_b(index: usize) -> Square {
+pub fn cuckoo_b(index: usize) -> Option<Square> {
     unsafe { B[index] }
 }
 
@@ -117,7 +117,6 @@ pub fn attacks(piece: Piece, square: Square, occupancies: Bitboard) -> Bitboard 
         PieceType::Rook => rook_attacks(square, occupancies),
         PieceType::Queen => queen_attacks(square, occupancies),
         PieceType::King => king_attacks(square),
-        PieceType::None => Bitboard(0),
     }
 }
 

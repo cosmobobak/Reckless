@@ -21,7 +21,7 @@ pub struct Entry {
     pub score: i32,
     pub raw_eval: i32,
     pub depth: i32,
-    pub bound: Bound,
+    pub bound: Option<Bound>,
     pub tt_pv: bool,
 }
 
@@ -31,18 +31,23 @@ pub struct Flags {
 }
 
 impl Flags {
-    pub const fn new(bound: Bound, tt_pv: bool, age: u8) -> Self {
+    pub const fn new(bound: Option<Bound>, tt_pv: bool, age: u8) -> Self {
         debug_assert!(age <= AGE_MASK);
 
-        Self { data: (bound as u8) | ((tt_pv as u8) << 2) | (age << 3) }
+        let bound_bits = match bound {
+            None => 0,
+            Some(b) => b as u8,
+        };
+
+        Self { data: bound_bits | ((tt_pv as u8) << 2) | (age << 3) }
     }
 
-    pub const fn bound(self) -> Bound {
+    pub const fn bound(self) -> Option<Bound> {
         match self.data & 0b11 {
-            0 => Bound::None,
-            1 => Bound::Exact,
-            2 => Bound::Lower,
-            3 => Bound::Upper,
+            0 => None,
+            1 => Some(Bound::Exact),
+            2 => Some(Bound::Lower),
+            3 => Some(Bound::Upper),
             _ => unreachable!(),
         }
     }
@@ -58,11 +63,11 @@ impl Flags {
 
 /// Type of the score returned by the search.
 #[derive(Copy, Clone, Eq, PartialEq)]
+#[repr(u8)]
 pub enum Bound {
-    None,
-    Exact,
-    Lower,
-    Upper,
+    Exact = 1,
+    Lower = 2,
+    Upper = 3,
 }
 
 /// Internal representation of a transposition table entry (10 bytes).
@@ -131,7 +136,7 @@ impl TranspositionTable {
         let mut count = 0;
         for cluster in clusters.iter().take(1000) {
             for entry in &cluster.entries {
-                count += (entry.flags.bound() != Bound::None && entry.flags.age() == age) as usize;
+                count += (entry.flags.bound().is_some() && entry.flags.age() == age) as usize;
             }
         }
 
@@ -170,8 +175,8 @@ impl TranspositionTable {
 
     #[allow(clippy::too_many_arguments)]
     pub fn write(
-        &self, hash: u64, depth: i32, raw_eval: i32, mut score: i32, bound: Bound, mv: Move, ply: isize, tt_pv: bool,
-        force: bool,
+        &self, hash: u64, depth: i32, raw_eval: i32, mut score: i32, bound: Option<Bound>, mv: Move, ply: isize,
+        tt_pv: bool, force: bool,
     ) {
         // Used for checking if an entry exists
         debug_assert!(depth != TtDepth::NONE);

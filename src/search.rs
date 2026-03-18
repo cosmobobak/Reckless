@@ -7,7 +7,7 @@ use crate::{
     transposition::{Bound, TtDepth},
     types::{
         draw, is_decisive, is_loss, is_valid, is_win, mate_in, mated_in, tb_loss_in, tb_win_in, ArrayVec, Color, Move,
-        Piece, Score, Square, MAX_PLY,
+        Piece, PieceType, Score, Square, MAX_PLY,
     },
 };
 
@@ -211,7 +211,8 @@ pub fn start(td: &mut ThreadData, report: Report) {
 
             let score_trend = (0.8 + 0.05 * (td.previous_best_score - td.root_moves[0].score) as f32).clamp(0.80, 1.45);
 
-            let recapture_factor = if td.root_moves[0].mv.to() == td.board.recapture_square() { 0.9 } else { 1.0 };
+            let recapture_factor =
+                if Some(td.root_moves[0].mv.to()) == td.board.recapture_square() { 0.9 } else { 1.0 };
 
             let best_move_stability = 1.0 + best_move_changes as f32 / 4.0;
 
@@ -298,7 +299,7 @@ fn search<NODE: NodeType>(
     let mut tt_depth = 0;
     let mut tt_move = Move::NULL;
     let mut tt_score = Score::NONE;
-    let mut tt_bound = Bound::None;
+    let mut tt_bound = None;
     let mut tt_pv = NODE::PV;
 
     // Search early TT cutoff
@@ -314,8 +315,8 @@ fn search<NODE: NodeType>(
             && tt_depth > depth - (tt_score < beta) as i32
             && is_valid(tt_score)
             && match tt_bound {
-                Bound::Upper => tt_score <= alpha && (!cut_node || depth > 5),
-                Bound::Lower => tt_score >= beta && (cut_node || depth > 5),
+                Some(Bound::Upper) => tt_score <= alpha && (!cut_node || depth > 5),
+                Some(Bound::Lower) => tt_score >= beta && (cut_node || depth > 5),
                 _ => true,
             }
         {
@@ -343,7 +344,9 @@ fn search<NODE: NodeType>(
                     let entry = &td.stack[ply - 2];
                     if entry.mv.is_some() {
                         let bonus = (115 * initial_depth - 34).min(1776);
-                        td.continuation_history.update(entry.conthist, td.stack[ply - 1].piece, pcm_move.to(), bonus);
+                        if let Some(piece) = td.stack[ply - 1].piece {
+                            td.continuation_history.update(entry.conthist, piece, pcm_move.to(), bonus);
+                        }
                     }
                 }
             }
@@ -376,7 +379,7 @@ fn search<NODE: NodeType>(
                 || (bound == Bound::Upper && score <= alpha)
             {
                 let depth = (depth + 6).min(MAX_PLY as i32 - 1);
-                td.shared.tt.write(hash, depth, Score::NONE, score, bound, Move::NULL, ply, tt_pv, false);
+                td.shared.tt.write(hash, depth, Score::NONE, score, Some(bound), Move::NULL, ply, tt_pv, false);
                 return score;
             }
 
@@ -410,7 +413,7 @@ fn search<NODE: NodeType>(
         raw_eval = td.nnue.evaluate(&td.board);
         eval = correct_eval(td, raw_eval, correction_value);
 
-        td.shared.tt.write(hash, TtDepth::SOME, raw_eval, Score::NONE, Bound::None, Move::NULL, ply, tt_pv, false);
+        td.shared.tt.write(hash, TtDepth::SOME, raw_eval, Score::NONE, None, Move::NULL, ply, tt_pv, false);
     }
 
     // Prefer the TT entry to tighten the evaluation when its bound aligns with
@@ -421,8 +424,8 @@ fn search<NODE: NodeType>(
         && !excluded
         && is_valid(tt_score)
         && match tt_bound {
-            Bound::Upper => tt_score < eval,
-            Bound::Lower => tt_score > eval,
+            Some(Bound::Upper) => tt_score < eval,
+            Some(Bound::Lower) => tt_score > eval,
             _ => true,
         }
     {
@@ -434,8 +437,8 @@ fn search<NODE: NodeType>(
         && !is_decisive(tt_score)
         && is_valid(tt_score)
         && match tt_bound {
-            Bound::Upper => tt_score <= alpha,
-            Bound::Lower => tt_score >= beta,
+            Some(Bound::Upper) => tt_score <= alpha,
+            Some(Bound::Lower) => tt_score >= beta,
             _ => true,
         }
     {
@@ -478,7 +481,7 @@ fn search<NODE: NodeType>(
 
     let potential_singularity = depth >= 5 + tt_pv as i32
         && tt_depth >= depth - 3
-        && tt_bound != Bound::Upper
+        && tt_bound != Some(Bound::Upper)
         && is_valid(tt_score)
         && !is_decisive(tt_score);
 
@@ -530,7 +533,7 @@ fn search<NODE: NodeType>(
 
         td.stack[ply].conthist = td.stack.sentinel().conthist;
         td.stack[ply].contcorrhist = td.stack.sentinel().contcorrhist;
-        td.stack[ply].piece = Piece::None;
+        td.stack[ply].piece = None;
         td.stack[ply].mv = Move::NULL;
 
         td.board.make_null_move();
@@ -609,7 +612,7 @@ fn search<NODE: NodeType>(
             }
 
             if score >= probcut_beta {
-                td.shared.tt.write(hash, probcut_depth + 1, raw_eval, score, Bound::Lower, mv, ply, tt_pv, false);
+                td.shared.tt.write(hash, probcut_depth + 1, raw_eval, score, Some(Bound::Lower), mv, ply, tt_pv, false);
 
                 if !is_decisive(score) {
                     return score - (probcut_beta - beta);
@@ -659,7 +662,7 @@ fn search<NODE: NodeType>(
         } else if cut_node {
             extension = -2;
         }
-    } else if NODE::PV && tt_move.is_noisy() && tt_move.to() == td.board.recapture_square() {
+    } else if NODE::PV && tt_move.is_noisy() && Some(tt_move.to()) == td.board.recapture_square() {
         extension = 1;
     }
 
@@ -694,7 +697,7 @@ fn search<NODE: NodeType>(
                 + td.conthist(ply, 1, mv)
                 + td.conthist(ply, 2, mv)
         } else {
-            let captured = td.board.piece_on(mv.to()).piece_type();
+            let captured = td.board.piece_on(mv.to()).map(|p| p.piece_type()).unwrap_or(PieceType::Pawn);
             td.noisy_history.get(td.board.threats(), td.board.moved_piece(mv), mv.to(), captured)
         };
 
@@ -723,7 +726,8 @@ fn search<NODE: NodeType>(
             let noisy_futility_value = eval
                 + 71 * depth
                 + 69 * history / 1024
-                + 81 * PIECE_VALUES[td.board.piece_on(mv.to()).piece_type()] / 1024
+                + 81 * PIECE_VALUES[td.board.piece_on(mv.to()).map(|p| p.piece_type()).unwrap_or(PieceType::Pawn)]
+                    / 1024
                 + 25;
 
             if !in_check
@@ -778,7 +782,9 @@ fn search<NODE: NodeType>(
             } else {
                 reduction += 1602;
                 reduction -= 109 * history / 1024;
-                reduction -= 57 * PIECE_VALUES[td.board.piece_on(mv.to()).piece_type()] / 128;
+                reduction -= 57
+                    * PIECE_VALUES[td.board.piece_on(mv.to()).map(|p| p.piece_type()).unwrap_or(PieceType::Pawn)]
+                    / 128;
             }
 
             if NODE::PV {
@@ -791,7 +797,7 @@ fn search<NODE: NodeType>(
                 reduction -= 824 * (is_valid(tt_score) && tt_depth >= depth) as i32;
             }
 
-            if mv.is_noisy() && mv.to() == td.board.recapture_square() {
+            if mv.is_noisy() && Some(mv.to()) == td.board.recapture_square() {
                 reduction -= 910;
             }
 
@@ -812,7 +818,7 @@ fn search<NODE: NodeType>(
                 reduction += 1604;
             }
 
-            if is_valid(tt_score) && tt_score < alpha && tt_bound == Bound::Upper {
+            if is_valid(tt_score) && tt_score < alpha && tt_bound == Some(Bound::Upper) {
                 reduction += 668;
             }
 
@@ -857,7 +863,9 @@ fn search<NODE: NodeType>(
             } else {
                 reduction += 1423;
                 reduction -= 65 * history / 1024;
-                reduction -= 48 * PIECE_VALUES[td.board.piece_on(mv.to()).piece_type()] / 128;
+                reduction -= 48
+                    * PIECE_VALUES[td.board.piece_on(mv.to()).map(|p| p.piece_type()).unwrap_or(PieceType::Pawn)]
+                    / 128;
             }
 
             if tt_pv {
@@ -1002,32 +1010,40 @@ fn search<NODE: NodeType>(
                 td.board.threats(),
                 td.board.moved_piece(best_move),
                 best_move.to(),
-                td.board.piece_on(best_move.to()).piece_type(),
+                td.board.piece_on(best_move.to()).map(|p| p.piece_type()).unwrap_or(PieceType::Pawn),
                 noisy_bonus,
             );
         } else {
             td.quiet_history.update(td.board.threats(), td.board.side_to_move(), best_move, quiet_bonus);
-            update_continuation_histories(td, ply, td.board.moved_piece(best_move), best_move.to(), cont_bonus);
+            if let Some(piece) = td.board.piece_on(best_move.from()) {
+                update_continuation_histories(td, ply, piece, best_move.to(), cont_bonus);
+            }
 
             for &mv in quiet_moves.iter() {
                 td.quiet_history.update(td.board.threats(), td.board.side_to_move(), mv, -quiet_malus);
-                update_continuation_histories(td, ply, td.board.moved_piece(mv), mv.to(), -cont_malus);
+                if let Some(piece) = td.board.piece_on(mv.from()) {
+                    update_continuation_histories(td, ply, piece, mv.to(), -cont_malus);
+                }
             }
         }
 
         for &mv in noisy_moves.iter() {
-            let captured = td.board.piece_on(mv.to()).piece_type();
+            let captured = td.board.piece_on(mv.to()).map(|p| p.piece_type()).unwrap_or(PieceType::Pawn);
             td.noisy_history.update(td.board.threats(), td.board.moved_piece(mv), mv.to(), captured, -noisy_malus);
         }
 
         if !NODE::ROOT && td.stack[ply - 1].mv.is_quiet() && td.stack[ply - 1].move_count < 2 {
-            let malus = (90 * initial_depth - 60).min(771);
-            update_continuation_histories(td, ply - 1, td.stack[ply - 1].piece, td.stack[ply - 1].mv.to(), -malus);
+            if let Some(piece) = td.stack[ply - 1].piece {
+                let malus = (90 * initial_depth - 60).min(771);
+                update_continuation_histories(td, ply - 1, piece, td.stack[ply - 1].mv.to(), -malus);
+            }
         }
 
         if current_search_count > 1 && best_move.is_quiet() && best_score >= beta {
-            let bonus = (211 * depth - 86).min(1634);
-            update_continuation_histories(td, ply, td.stack[ply].piece, best_move.to(), bonus);
+            if let Some(piece) = td.stack[ply].piece {
+                let bonus = (211 * depth - 86).min(1634);
+                update_continuation_histories(td, ply, piece, best_move.to(), bonus);
+            }
         }
     }
 
@@ -1047,20 +1063,16 @@ fn search<NODE: NodeType>(
 
             let entry = &td.stack[ply - 2];
             if entry.mv.is_some() {
-                let bonus = (161 * initial_depth - 38).min(1169);
-                td.continuation_history.update(entry.conthist, td.stack[ply - 1].piece, pcm_move.to(), bonus);
+                if let Some(piece) = td.stack[ply - 1].piece {
+                    let bonus = (161 * initial_depth - 38).min(1169);
+                    td.continuation_history.update(entry.conthist, piece, pcm_move.to(), bonus);
+                }
             }
         } else if pcm_move.is_noisy() {
-            let captured = td.board.captured_piece().unwrap_or_default().piece_type();
-            let bonus = 60;
-
-            td.noisy_history.update(
-                td.board.prior_threats(),
-                td.board.piece_on(pcm_move.to()),
-                pcm_move.to(),
-                captured,
-                bonus,
-            );
+            if let (Some(piece), Some(captured)) = (td.board.piece_on(pcm_move.to()), td.board.captured_piece()) {
+                let bonus = 60;
+                td.noisy_history.update(td.board.prior_threats(), piece, pcm_move.to(), captured.piece_type(), bonus);
+            }
         }
     }
 
@@ -1075,7 +1087,7 @@ fn search<NODE: NodeType>(
     }
 
     if !(excluded || NODE::ROOT && td.pv_index > 0) {
-        td.shared.tt.write(hash, depth, raw_eval, best_score, bound, best_move, ply, tt_pv, NODE::PV);
+        td.shared.tt.write(hash, depth, raw_eval, best_score, Some(bound), best_move, ply, tt_pv, NODE::PV);
     }
 
     if !(in_check
@@ -1129,7 +1141,7 @@ fn qsearch<NODE: NodeType>(td: &mut ThreadData, mut alpha: i32, beta: i32, ply: 
 
     let mut tt_pv = NODE::PV;
     let mut tt_score = Score::NONE;
-    let mut tt_bound = Bound::None;
+    let mut tt_bound = None;
 
     // QS early TT cutoff
     if let Some(entry) = &entry {
@@ -1140,8 +1152,8 @@ fn qsearch<NODE: NodeType>(td: &mut ThreadData, mut alpha: i32, beta: i32, ply: 
         if is_valid(tt_score)
             && (!NODE::PV || !is_decisive(tt_score))
             && match tt_bound {
-                Bound::Upper => tt_score <= alpha,
-                Bound::Lower => tt_score >= beta,
+                Some(Bound::Upper) => tt_score <= alpha,
+                Some(Bound::Lower) => tt_score >= beta,
                 _ => true,
             }
         {
@@ -1163,8 +1175,8 @@ fn qsearch<NODE: NodeType>(td: &mut ThreadData, mut alpha: i32, beta: i32, ply: 
         if is_valid(tt_score)
             && (!NODE::PV || !is_decisive(tt_score))
             && match tt_bound {
-                Bound::Upper => tt_score < best_score,
-                Bound::Lower => tt_score > best_score,
+                Some(Bound::Upper) => tt_score < best_score,
+                Some(Bound::Lower) => tt_score > best_score,
                 _ => true,
             }
         {
@@ -1182,7 +1194,7 @@ fn qsearch<NODE: NodeType>(td: &mut ThreadData, mut alpha: i32, beta: i32, ply: 
                     TtDepth::SOME,
                     raw_eval,
                     best_score,
-                    Bound::Lower,
+                    Some(Bound::Lower),
                     Move::NULL,
                     ply,
                     tt_pv,
@@ -1210,7 +1222,7 @@ fn qsearch<NODE: NodeType>(td: &mut ThreadData, mut alpha: i32, beta: i32, ply: 
 
         move_count += 1;
 
-        if !is_loss(best_score) && mv.to() != td.board.recapture_square() {
+        if !is_loss(best_score) && Some(mv.to()) != td.board.recapture_square() {
             if move_picker.stage() == Stage::BadNoisy {
                 break;
             }
@@ -1219,7 +1231,10 @@ fn qsearch<NODE: NodeType>(td: &mut ThreadData, mut alpha: i32, beta: i32, ply: 
                 break;
             }
 
-            let futility_score = best_score + 42 * PIECE_VALUES[td.board.piece_on(mv.to()).piece_type()] / 128 + 104;
+            let futility_score = best_score
+                + 42 * PIECE_VALUES[td.board.piece_on(mv.to()).map(|p| p.piece_type()).unwrap_or(PieceType::Pawn)]
+                    / 128
+                + 104;
 
             if !in_check && futility_score <= alpha && !td.board.see(mv, 1) {
                 continue;
@@ -1269,7 +1284,7 @@ fn qsearch<NODE: NodeType>(td: &mut ThreadData, mut alpha: i32, beta: i32, ply: 
 
     let bound = if best_score >= beta { Bound::Lower } else { Bound::Upper };
 
-    td.shared.tt.write(hash, TtDepth::SOME, raw_eval, best_score, bound, best_move, ply, tt_pv, false);
+    td.shared.tt.write(hash, TtDepth::SOME, raw_eval, best_score, Some(bound), best_move, ply, tt_pv, false);
 
     debug_assert!(alpha < beta);
     debug_assert!(-Score::INFINITE < best_score && best_score < Score::INFINITE);
@@ -1281,24 +1296,17 @@ fn eval_correction(td: &ThreadData, ply: isize) -> i32 {
     let stm = td.board.side_to_move();
     let corrhist = td.corrhist();
 
-    (1033 * corrhist.pawn.get(stm, td.board.pawn_key())
+    let mut total = 1033 * corrhist.pawn.get(stm, td.board.pawn_key())
         + 959 * corrhist.minor.get(stm, td.board.minor_key())
         + 1044 * corrhist.non_pawn[Color::White].get(stm, td.board.non_pawn_key(Color::White))
-        + 1044 * corrhist.non_pawn[Color::Black].get(stm, td.board.non_pawn_key(Color::Black))
-        + 1001
-            * td.continuation_corrhist.get(
-                td.stack[ply - 2].contcorrhist,
-                td.stack[ply - 1].piece,
-                td.stack[ply - 1].mv.to(),
-            )
-        + 1014
-            * td.continuation_corrhist.get(
-                td.stack[ply - 4].contcorrhist,
-                td.stack[ply - 1].piece,
-                td.stack[ply - 1].mv.to(),
-            ))
-        / 1024
-        / 77
+        + 1044 * corrhist.non_pawn[Color::Black].get(stm, td.board.non_pawn_key(Color::Black));
+
+    if let Some(piece) = td.stack[ply - 1].piece {
+        total += 1001 * td.continuation_corrhist.get(td.stack[ply - 2].contcorrhist, piece, td.stack[ply - 1].mv.to());
+        total += 1014 * td.continuation_corrhist.get(td.stack[ply - 4].contcorrhist, piece, td.stack[ply - 1].mv.to());
+    }
+
+    total / 1024 / 77
 }
 
 fn update_correction_histories(td: &mut ThreadData, depth: i32, diff: i32, ply: isize) {
@@ -1312,22 +1320,14 @@ fn update_correction_histories(td: &mut ThreadData, depth: i32, diff: i32, ply: 
     corrhist.non_pawn[Color::White].update(stm, td.board.non_pawn_key(Color::White), bonus);
     corrhist.non_pawn[Color::Black].update(stm, td.board.non_pawn_key(Color::Black), bonus);
 
-    if td.stack[ply - 1].mv.is_some() && td.stack[ply - 2].mv.is_some() {
-        td.continuation_corrhist.update(
-            td.stack[ply - 2].contcorrhist,
-            td.stack[ply - 1].piece,
-            td.stack[ply - 1].mv.to(),
-            bonus,
-        );
-    }
+    if let Some(piece) = td.stack[ply - 1].piece {
+        if td.stack[ply - 1].mv.is_some() && td.stack[ply - 2].mv.is_some() {
+            td.continuation_corrhist.update(td.stack[ply - 2].contcorrhist, piece, td.stack[ply - 1].mv.to(), bonus);
+        }
 
-    if td.stack[ply - 1].mv.is_some() && td.stack[ply - 4].mv.is_some() {
-        td.continuation_corrhist.update(
-            td.stack[ply - 4].contcorrhist,
-            td.stack[ply - 1].piece,
-            td.stack[ply - 1].mv.to(),
-            bonus,
-        );
+        if td.stack[ply - 1].mv.is_some() && td.stack[ply - 4].mv.is_some() {
+            td.continuation_corrhist.update(td.stack[ply - 4].contcorrhist, piece, td.stack[ply - 1].mv.to(), bonus);
+        }
     }
 }
 
@@ -1341,12 +1341,12 @@ fn update_continuation_histories(td: &mut ThreadData, ply: isize, piece: Piece, 
 }
 
 fn make_move(td: &mut ThreadData, ply: isize, mv: Move) {
+    let piece = td.board.moved_piece(mv);
     td.stack[ply].mv = mv;
-    td.stack[ply].piece = td.board.moved_piece(mv);
-    td.stack[ply].conthist =
-        td.continuation_history.subtable_ptr(td.board.in_check(), mv.is_noisy(), td.board.moved_piece(mv), mv.to());
+    td.stack[ply].piece = Some(piece);
+    td.stack[ply].conthist = td.continuation_history.subtable_ptr(td.board.in_check(), mv.is_noisy(), piece, mv.to());
     td.stack[ply].contcorrhist =
-        td.continuation_corrhist.subtable_ptr(td.board.in_check(), mv.is_noisy(), td.board.moved_piece(mv), mv.to());
+        td.continuation_corrhist.subtable_ptr(td.board.in_check(), mv.is_noisy(), piece, mv.to());
 
     td.shared.nodes.increment(td.id);
 

@@ -50,7 +50,7 @@ pub fn tb_probe(board: &Board) -> Option<GameOutcome> {
             board.pieces(PieceType::Pawn).0,
             0,
             0,
-            board.en_passant() as u32 & 0x3F,
+            board.en_passant().map(|ep| ep as u32).unwrap_or(64) & 0x3F,
             board.side_to_move() == Color::White,
         )
     };
@@ -136,7 +136,7 @@ pub fn tb_rank_rootmoves(td: &mut ThreadData) {
             td.board.pieces(PieceType::Pawn).0,
             td.board.halfmove_clock() as u32,
             0,
-            td.board.en_passant() as u32 & 0x3F,
+            td.board.en_passant().map(|ep| ep as u32).unwrap_or(64) & 0x3F,
             td.board.side_to_move() == Color::White,
             false,
             true,
@@ -163,7 +163,7 @@ pub fn tb_rank_rootmoves(td: &mut ThreadData) {
             td.board.pieces(PieceType::Pawn).0,
             td.board.halfmove_clock() as u32,
             0,
-            td.board.en_passant() as u32 & 0x3F,
+            td.board.en_passant().map(|ep| ep as u32).unwrap_or(64) & 0x3F,
             td.board.side_to_move() == Color::White,
             true,
             tb_ptr,

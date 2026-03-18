@@ -4,7 +4,7 @@ use crate::types::{Move, Piece, Score, MAX_PLY};
 
 pub struct Stack {
     data: [StackEntry; MAX_PLY + 16],
-    sentinel: [[i16; 64]; 13],
+    sentinel: [[i16; 64]; Piece::NUM],
 }
 
 impl Stack {
@@ -17,7 +17,7 @@ impl Default for Stack {
     fn default() -> Self {
         let mut stack = Self {
             data: [StackEntry::default(); MAX_PLY + 16],
-            sentinel: [[0; 64]; 13],
+            sentinel: [[0; 64]; Piece::NUM],
         };
 
         let ptr = &mut stack.sentinel as *mut _;
@@ -32,7 +32,7 @@ impl Default for Stack {
 #[derive(Copy, Clone)]
 pub struct StackEntry {
     pub mv: Move,
-    pub piece: Piece,
+    pub piece: Option<Piece>,
     pub eval: i32,
     pub excluded: Move,
     pub tt_move: Move,
@@ -40,8 +40,8 @@ pub struct StackEntry {
     pub cutoff_count: i32,
     pub move_count: i32,
     pub reduction: i32,
-    pub conthist: *mut [[i16; 64]; 13],
-    pub contcorrhist: *mut [[i16; 64]; 13],
+    pub conthist: *mut [[i16; 64]; Piece::NUM],
+    pub contcorrhist: *mut [[i16; 64]; Piece::NUM],
 }
 
 unsafe impl Send for StackEntry {}
@@ -50,7 +50,7 @@ impl Default for StackEntry {
     fn default() -> Self {
         Self {
             mv: Move::NULL,
-            piece: Piece::None,
+            piece: None,
             eval: Score::NONE,
             excluded: Move::NULL,
             tt_move: Move::NULL,

@@ -177,10 +177,10 @@ impl super::Board {
     }
 
     fn collect_en_passant_moves(&self, list: &mut MoveList, pawns: Bitboard) {
-        if self.state.en_passant != Square::None {
-            let pawns = pawns & pawn_attacks(self.state.en_passant, !self.side_to_move);
+        if let Some(ep) = self.state.en_passant {
+            let pawns = pawns & pawn_attacks(ep, !self.side_to_move);
             for pawn in pawns {
-                list.push(pawn, self.state.en_passant, MoveKind::EnPassant);
+                list.push(pawn, ep, MoveKind::EnPassant);
             }
         }
     }

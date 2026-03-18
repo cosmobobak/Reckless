@@ -31,8 +31,8 @@ impl Default for CacheEntry {
 #[derive(Clone)]
 pub struct PstDelta {
     pub mv: Move,
-    pub piece: Piece,
-    pub captured: Piece,
+    pub piece: Option<Piece>,
+    pub captured: Option<Piece>,
 }
 
 #[derive(Clone)]
@@ -46,7 +46,7 @@ impl PstAccumulator {
     pub fn new() -> Self {
         Self {
             values: Aligned::new([PARAMETERS.ft_biases.data; 2]),
-            delta: PstDelta { mv: Move::NULL, piece: Piece::None, captured: Piece::None },
+            delta: PstDelta { mv: Move::NULL, piece: None, captured: None },
             accurate: [false; 2],
         }
     }
@@ -93,6 +93,7 @@ impl PstAccumulator {
 
     pub fn update(&mut self, prev: &Self, board: &Board, king: Square, pov: Color) {
         let PstDelta { mv, piece, captured } = self.delta;
+        let piece = piece.unwrap();
 
         let resulting_piece = mv.promotion_piece().unwrap_or_else(|| piece.piece_type());
 
@@ -117,6 +118,7 @@ impl PstAccumulator {
             | MoveKind::PromotionCaptureB
             | MoveKind::PromotionCaptureR
             | MoveKind::PromotionCaptureQ => {
+                let captured = captured.unwrap();
                 let sub2 = pst_index(!piece.piece_color(), captured.piece_type(), mv.to(), king, pov);
                 self.add1_sub2(prev, add1, sub1, sub2, pov);
             }
@@ -287,11 +289,11 @@ impl ThreatAccumulator {
         self.values[pov] = [0; L1_SIZE];
 
         for square in board.occupancies() {
-            let piece = board.piece_on(square);
+            let piece = board.piece_on(square).unwrap();
             let threats = attacks(piece, square, board.occupancies()) & board.occupancies();
 
             for target in threats {
-                let attacked = board.piece_on(target);
+                let attacked = board.piece_on(target).unwrap();
                 let mirrored = king.file() >= 4;
 
                 let index = threat_index(piece, square, attacked, target, mirrored, pov);
